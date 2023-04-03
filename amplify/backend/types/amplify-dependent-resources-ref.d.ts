@@ -1,4 +1,11 @@
 export type AmplifyDependentResourcesAttributes = {
+  "api": {
+    "helloworldreact": {
+      "GraphQLAPIEndpointOutput": "string",
+      "GraphQLAPIIdOutput": "string",
+      "GraphQLAPIKeyOutput": "string"
+    }
+  },
   "auth": {
     "helloworldreactdf295976": {
       "AppClientID": "string",

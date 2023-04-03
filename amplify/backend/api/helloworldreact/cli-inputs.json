@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "serviceConfiguration": {
+    "apiName": "helloworldreact",
+    "serviceName": "AppSync",
+    "defaultAuthType": {
+      "mode": "API_KEY",
+      "expirationTime": 7,
+      "apiKeyExpirationDate": "2023-04-10T12:41:35.393Z",
+      "keyDescription": ""
+    },
+    "conflictResolution": {},
+    "additionalAuthTypes": []
+  }
+}
