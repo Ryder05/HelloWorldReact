@@ -21,8 +21,5 @@ function App({ signOut }) {
   );
 }
 
-<<<<<<< HEAD
+
 export default withAuthenticator(App);
-=======
-export default withAuthenticator(App);
->>>>>>> f305868 (added auth)
