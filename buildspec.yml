@@ -1,0 +1,123 @@
+
+version: 0.2
+
+batch:
+  build-list:
+    - identifier: build_php8_2_4_alpine3_17
+      env:
+        variables:
+          PHP_VERSION: 8.2.4
+          ALPINE_VERSION: 3.17
+          SPECIFIC_MODS: "--with-sodium --with-zip --enable-gd --with-jpeg --with-freetype"
+
+    - identifier: build_php8_1_17_alpine3_17
+      env:
+        variables:
+          PHP_VERSION: 8.1.17
+          ALPINE_VERSION: 3.17
+          SPECIFIC_MODS: "--with-sodium --with-zip --enable-gd --with-jpeg --with-freetype"
+
+    - identifier: build_php8_0_28_alpine3_16
+      env:
+        variables:
+          PHP_VERSION: 8.0.28
+          ALPINE_VERSION: 3.16
+          SPECIFIC_MODS: "--with-sodium --with-zip --enable-gd --with-jpeg --with-freetype"
+
+    # - identifier: build_php7_4_33_alpine3_16
+    #   env:
+    #     variables:
+    #       PHP_VERSION: 7.4.33
+    #       ALPINE_VERSION: 3.16
+    #       SPECIFIC_MODS: "--with-iconv-dir --with-sodium --with-zip --enable-gd --with-jpeg --with-freetype"
+
+    # - identifier: build_php7_3_33_alpine3_15
+    #   env:
+    #     variables:
+    #       PHP_VERSION: 7.3.33
+    #       ALPINE_VERSION: 3.15
+    #       SPECIFIC_MODS: "--with-iconv-dir --with-sodium --enable-zip --enable-embedded-mysqli --enable-wddx --with-gd --with-jpeg-dir --with-png-dir --with-freetype-dir --with-libxml-dir"
+
+    # - identifier: build_php7_2_34_alpine3_13
+    #   env:
+    #     variables:
+    #       PHP_VERSION: 7.2.34
+    #       ALPINE_VERSION: 3.13
+    #       SPECIFIC_MODS: "--with-iconv-dir --with-sodium --enable-zip --enable-embedded-mysqli --enable-wddx --with-gd --with-jpeg-dir --with-png-dir --with-freetype-dir --with-libxml-dir"
+
+    # - identifier: build_php5_6_40_alpine3_8
+    #   env:
+    #     variables:
+    #       PHP_VERSION: 5.6.40
+    #       ALPINE_VERSION: 3.8
+    #       SPECIFIC_MODS: "--with-iconv-dir --with-mcrypt --enable-zip --enable-embedded-mysqli --enable-wddx --with-gd --with-jpeg-dir --with-png-dir --with-freetype-dir --with-libxml-dir"
+
+env:
+  variables:
+    AWS_DEFAULT_REGION: "eu-west-1"
+    ECR_ENDPOINT: "public.ecr.aws/g4s2c6b2"
+    # ECR_REPO: "docker-images"
+    ECR_REPO: "oussmoh-devops"
+    ARCH: "MUST-BE-DEFINED-IN-CODEBUILD"  # "arm64" or "amd64"
+    DOCKER_COMPOSE_AMD: "https://github.com/docker/compose/releases/download/v2.16.0/docker-compose-linux-x86_64"
+    DOCKER_COMPOSE_ARM: "https://github.com/docker/compose/releases/download/v2.16.0/docker-compose-linux-aarch64"
+    CONTAINER_STRUCTURE_TEST_AMD: "https://storage.googleapis.com/container-structure-test/latest/container-structure-test-linux-amd64"
+    CONTAINER_STRUCTURE_TEST_ARM: "https://storage.googleapis.com/container-structure-test/latest/container-structure-test-linux-arm64"
+phases:
+  install:
+    commands:
+      - echo Installing packages...
+      # Install recent version of docker compose (2.16.0)
+      - |
+        if [ "$ARCH" = "arm64" ]; then
+          echo Install ARM version of docker-compose
+          curl -L $DOCKER_COMPOSE_ARM > /usr/local/bin/docker-compose
+        else
+          echo Install AMD version of docker-compose
+          curl -L $DOCKER_COMPOSE_AMD > /usr/local/bin/docker-compose
+        fi
+      - chmod +x /usr/local/bin/docker-compose
+      # Install container-structure-test
+      - |
+        if [ "$ARCH" = "arm64" ]; then
+          echo Install ARM version of container-structure-test
+          curl -LO $CONTAINER_STRUCTURE_TEST_ARM > /usr/bin/container-structure-test
+        else
+          echo Install AMD version of container-structure-test
+          curl -LO $CONTAINER_STRUCTURE_TEST_AMD > /usr/bin/container-structure-test
+        fi
+      - chmod +x /usr/bin/container-structure-test
+  pre_build:
+    commands:
+      - echo Logging in to Amazon ECR...
+      # AL2
+      - $(aws ecr get-login --region $AWS_DEFAULT_REGION --no-include-email)
+      # Ubuntu
+      # - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin ${ECR_ENDPOINT}
+      - export TIMESTAMP=$(date +%s)
+      - export PHP_MINOR_VERSION=${PHP_VERSION%.*}
+      - export PHP_MAJOR_VERSION=${PHP_MINOR_VERSION%.*}
+      - export NR_LICENCE_KEY=$(aws ssm get-parameter --name NR_LICENCE_KEY --region=$AWS_DEFAULT_REGION --with-decryption | jq -r ".Parameter.Value")
+      - export WWW_DATA_PASSWD=$(aws ssm get-parameter --name docker-www-data-sudo-password --region=$AWS_DEFAULT_REGION --with-decryption | jq -r ".Parameter.Value")
+  build:
+    commands:
+      # Build PHP base version
+      - echo Build started on `date` - fpm-builder
+      - /usr/local/bin/docker-compose build fpm-builder
+
+      - docker images -a
+
+      # Build Newrelic version
+      - echo Build started on `date` - fpm-newrelic
+      - /usr/local/bin/docker-compose build fpm-newrelic
+
+      # Test builded images
+      - container-structure-test test --image ${ECR_ENDPOINT}/${ECR_REPO}:php-newrelic-${PHP_MINOR_VERSION}-alpine-${ARCH} --config php-newrelic.container-structure-test.yml || exit 1
+  post_build:
+    commands:
+      - echo Build completed on `date`
+
+      # Push Newrelic version
+      - echo Push service - fpm-newrelic
+      - /usr/local/bin/docker-compose push fpm-newrelic
+
